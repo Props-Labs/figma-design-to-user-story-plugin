@@ -1,0 +1,16 @@
+{
+  "name": "Figma User Stories",
+  "id": "1422406171986343028",
+  "api": "1.0.0",
+  "main": "code.js",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "documentAccess": "dynamic-page",
+  "editorType": [
+    "figma"
+  ],
+  "ui": "ui.html",
+  "networkAccess": {
+    "allowedDomains": ["https://api.openai.com", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net", "https://unpkg.com"]
+  }
+}

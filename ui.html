@@ -1,0 +1,256 @@
+<html>
+  <head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.5.0/dist/full.css" rel="stylesheet" type="text/css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+      rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['PT Sans', 'sans-serif'],
+            },
+          },
+        },
+        plugins: [require("daisyui")],
+      }
+    </script>
+    <style>
+      .fullscreen-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body class="bg-base-200 p-4 pt-0 font-sans">
+    <div class="p-1 pt-4">
+      <div class="flex gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scroll-text">
+          <path d="M15 12h-5" />
+          <path d="M15 8h-5" />
+          <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+          <path
+            d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3" />
+        </svg>
+        <span class="text-sm">Design To User Story</span>
+      </div>
+    </div>
+    <div class="max-w-md mx-auto">
+      <div id="flowStatus" class="alert mb-0 hidden pb-0">
+        <span>Please select a Flow in Figma</span>
+      </div>
+      <div id="flowInfo" class="mb-4 hidden text-sm flex gap-1 justify-center">
+        <p>Start: <span class="font-semibold" id="flowName"></span></p>
+        <p>Frames: <span class="font-semibold" id="frameCount">0</span></p>
+        <p>Connections: <span class="font-semibold" id="connectionCount">0</span></p>
+      </div>
+      <div class="form-control mb-4">
+        <label class="label">
+          <span class="label-text">OpenAI API Key</span>
+        </label>
+        <input type="password" id="apiKeyInput" placeholder="Enter your API key" class="input input-bordered w-full" />
+        <label class="label">
+          <span class="label-text-alt text-warning">Note: Storing API keys in the plugin is insecure. Use at your own risk.</span>
+        </label>
+      </div>
+      <button id="generateBtn" class="btn btn-primary w-full mb-4" disabled>Generate User Stories</button>
+      <button id="exportCsvBtn" class="btn btn-secondary w-full mb-4" disabled>Export to CSV</button>
+      <div id="storiesContainer" class="hidden">
+        <h3 class="text-xl font-semibold mb-2">Generated User Stories:</h3>
+        <div id="storiesCards" class="space-y-4"></div>
+      </div>
+    </div>
+
+    <!-- Fullscreen loader -->
+    <div id="fullscreenLoader" class="fullscreen-loader bg-primary bg-primary-content">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-loader-circle animate-spin text-primary">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      </svg>
+      <p id="loaderText" class="text-primary mt-4">Initializing...</p>
+    </div>
+
+    <script>
+      const flowStatus = document.getElementById('flowStatus');
+      const generateBtn = document.getElementById('generateBtn');
+      const exportCsvBtn = document.getElementById('exportCsvBtn');
+      const apiKeyInput = document.getElementById('apiKeyInput');
+      const processingMsg = document.getElementById('processingMsg');
+      const processingText = document.getElementById('processingText');
+
+      generateBtn.onclick = () => {
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+          showToast('Please enter your OpenAI API key', 'error');
+          return;
+        }
+        // Show the fullscreen loader immediately
+        const fullscreenLoader = document.getElementById('fullscreenLoader');
+        const loaderText = document.getElementById('loaderText');
+        fullscreenLoader.classList.remove('hidden');
+        loaderText.textContent = 'Generating user stories...';
+        
+        // Disable the generate button to prevent multiple clicks
+        generateBtn.disabled = true;
+        
+        // Send message to plugin to start generating stories
+        parent.postMessage({ pluginMessage: { type: 'generate-stories', apiKey } }, '*');
+      };
+
+      exportCsvBtn.onclick = () => {
+        const storiesCards = document.getElementById('storiesCards');
+        if (storiesCards.children.length > 0) {
+          const csvContent = generateCsvContent();
+          downloadCsv(csvContent, 'user_stories.csv');
+        } else {
+          showToast('No user stories to export', 'warning');
+        }
+      };
+
+      function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-top toast-center';
+        toast.innerHTML = `
+          <div class="alert alert-${type}">
+            <span>${message}</span>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+      }
+
+      function createStoryCard(story) {
+        return `
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+              <h2 class="card-title">${story.title}</h2>
+              <p>${story.description}</p>
+              <div>
+                <h3 class="font-semibold">Acceptance Criteria:</h3>
+                <ul class="list-disc list-inside">
+                  ${story.acceptanceCriteria.map(criterion => `<li>${criterion}</li>`).join('')}
+                </ul>
+              </div>
+              <div class="card-actions justify-end">
+                <div class="badge badge-outline">${story.id}</div>
+                ${story.relatedScreens.map(screen => `
+                  <a href="${screen.link}" target="_blank" class="badge badge-primary">${screen.name}</a>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function generateCsvContent() {
+        const headers = ['ID', 'Title', 'Description', 'Acceptance Criteria', 'Related Screens', 'Frame Links'];
+        const rows = [headers];
+
+        document.querySelectorAll('#storiesCards .card').forEach(card => {
+          const id = card.querySelector('.badge-outline').textContent;
+          const title = card.querySelector('.card-title').textContent;
+          const description = card.querySelector('p').textContent;
+          const criteria = Array.from(card.querySelectorAll('ul li')).map(li => li.textContent).join('; ');
+          const screens = Array.from(card.querySelectorAll('.badge-primary')).map(badge => badge.textContent).join(', ');
+          const links = Array.from(card.querySelectorAll('.badge-primary')).map(badge => badge.href).join(', ');
+
+          rows.push([id, title, description, criteria, screens, links]);
+        });
+
+        return rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+      }
+
+      function downloadCsv(content, fileName) {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', fileName);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      }
+
+      window.onmessage = async (event) => {
+        const msg = event.data.pluginMessage;
+        if (msg.type === 'processing') {
+          document.getElementById('spinner').classList.remove('hidden');
+          // Show processing message
+        } else if (msg.type === 'flow-selected' || msg.type === 'user-stories') {
+          document.getElementById('spinner').classList.add('hidden');
+          // Handle flow selection or user stories
+        } else if (msg.type === 'error') {
+          document.getElementById('spinner').classList.add('hidden');
+          // Show error message
+        } else if (msg.type === 'info') {
+          // Show info message (e.g., "Maximum of 10 frames reached")
+        }
+      };
+
+      onmessage = (event) => {
+        const msg = event.data.pluginMessage;
+        const fullscreenLoader = document.getElementById('fullscreenLoader');
+        const loaderText = document.getElementById('loaderText');
+        const flowStatus = document.getElementById('flowStatus');
+
+        if (msg.type === 'no-selection') {
+          fullscreenLoader.classList.add('hidden');
+          flowStatus.classList.remove('hidden');
+          flowStatus.innerHTML = `<span class="text-warning">${msg.message}</span>`;
+          generateBtn.disabled = true;
+          exportCsvBtn.disabled = true;
+          document.getElementById('flowInfo').classList.add('hidden');
+        } else if (msg.type === 'flow-selected') {
+          fullscreenLoader.classList.add('hidden');
+          flowStatus.classList.remove('hidden');
+          flowStatus.innerHTML = `<span class="text-success">Flow selected</span>`;
+          generateBtn.disabled = false;
+          exportCsvBtn.disabled = true;
+          const flowInfo = document.getElementById('flowInfo');
+          flowInfo.classList.remove('hidden');
+          document.getElementById('flowName').textContent = msg.name;
+          document.getElementById('frameCount').textContent = msg.frameCount;
+          document.getElementById('connectionCount').textContent = msg.connectionCount;
+        } else if (msg.type === 'processing') {
+          fullscreenLoader.classList.remove('hidden');
+          loaderText.textContent = msg.message;
+        } else if (msg.type === 'user-stories') {
+          fullscreenLoader.classList.add('hidden');
+          const storiesContainer = document.getElementById('storiesContainer');
+          const storiesCards = document.getElementById('storiesCards');
+          storiesContainer.classList.remove('hidden');
+          storiesCards.innerHTML = '';
+          msg.data.userStories.forEach(story => {
+            storiesCards.innerHTML += createStoryCard(story);
+          });
+          exportCsvBtn.disabled = false;
+          generateBtn.disabled = false;  // Re-enable the generate button
+        } else if (msg.type === 'error') {
+          fullscreenLoader.classList.add('hidden');
+          showToast(msg.message, 'error');
+          exportCsvBtn.disabled = true;
+          generateBtn.disabled = false;  // Re-enable the generate button
+        } else if (msg.type === 'info') {
+          showToast(msg.message, 'info');
+        }
+      };
+
+      // Show loader immediately when the plugin starts
+      document.getElementById('fullscreenLoader').classList.remove('hidden');
+    </script>
+  </body>
+</html>
